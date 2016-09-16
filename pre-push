@@ -5,6 +5,8 @@ set -e
 ####################################################
 # SETUP START
 #
+# bash script is useless without pre-commit versions
+#
 # jq is a dependency which will need to be installed
 #   https://stedolan.github.io/jq/  osx
 #   - copy file to /usr/local/bin
@@ -14,9 +16,9 @@ set -e
 # global git hooks setup
 #  - git config --global init.templatedir '~/.git-templates'
 #  - mkdir -p ~/.git-templates/hooks
-#  - create ~/.git-templates/hooks/pre-commit file and populate it with this script
+#  - create ~/.git-templates/hooks/pre-push file and populate it with this script
 #  - make file executable
-#      chmod a+x ~/.git-templates/hooks/pre-commit
+#      chmod a+x ~/.git-templates/hooks/pre-push
 #  - reinitialise each relevant git hub repo that should use the pre-commit hook
 #      git init
 #      the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder
@@ -28,9 +30,21 @@ if [ ! -f ./deploy/metadata.json ]; then
     exit
 fi
 
-currentVersion=($(jq -r '.version' ./deploy/metadata.json))
-lastVersionPart="${currentVersion##*.}"
-lastVersionPart=$((lastVersionPart + 1))
-newVersion=${currentVersion%.*}.${lastVersionPart}
-jq '.version="'${newVersion}'"' ./deploy/metadata.json > tmp.$$.json && mv tmp.$$.json ./deploy/metadata.json
-git add ./deploy/metadata.json
+if [ ! -f ~/deployment-metadata.json ]; then
+    exit
+fi
+
+product=($(jq -r '.product' ./deploy/metadata.json))
+service=($(jq -r '.service' ./deploy/metadata.json))
+productAndService=${product}_${service}
+
+if [ "$product" ] && [ "$service" ]; then
+
+    existence=($(jq -r '.'${productAndService}'' ~/deployment-metadata.json))
+
+    if [ $existence = "1" ]; then
+
+        jq "del(.$productAndService)" ~/deployment-metadata.json > tmp.$$.json && mv tmp.$$.json ~/deployment-metadata.json
+    fi
+
+fi

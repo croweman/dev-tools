@@ -28,9 +28,30 @@ if [ ! -f ./deploy/metadata.json ]; then
     exit
 fi
 
+if [ ! -f ~/deployment-metadata.json ]; then
+    echo {} >> ~/deployment-metadata.json
+fi
+
+product=($(jq -r '.product' ./deploy/metadata.json))
+service=($(jq -r '.service' ./deploy/metadata.json))
+productAndService=${product}_${service}
+
+if [ "$product" ] && [ "$service" ]; then
+
+    existence=($(jq -r '.'${productAndService}'' ~/deployment-metadata.json))
+
+    if [ $existence = "1" ]; then
+        exit
+    fi
+
+fi
+
 currentVersion=($(jq -r '.version' ./deploy/metadata.json))
 lastVersionPart="${currentVersion##*.}"
 lastVersionPart=$((lastVersionPart + 1))
 newVersion=${currentVersion%.*}.${lastVersionPart}
+
 jq '.version="'${newVersion}'"' ./deploy/metadata.json > tmp.$$.json && mv tmp.$$.json ./deploy/metadata.json
 git add ./deploy/metadata.json
+
+jq .${productAndService}=\"1\" ~/deployment-metadata.json > tmp.$$.json && mv tmp.$$.json ~/deployment-metadata.json

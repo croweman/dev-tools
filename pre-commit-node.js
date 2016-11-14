@@ -1,34 +1,39 @@
 'use strict';
 
 /*
-SETUP
------
+ SETUP
+ -----
 
-global git hooks setup
-  - git config --global init.templatedir '~/.git-templates'
-  - mkdir -p ~/.git-templates/hooks
-  - create ~/.git-templates/hooks/pre-commit file and populate it with pre-commit-node bash file
-    - make file executable
-        chmod a+x ~/.git-templates/hooks/pre-commit
-    - copy this file to ~/.git-templates/hooks/pre-commit-node.js
-    - reinitialise each relevant git hub repo that should use the pre-commit hook
-        git init
-        the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder
-    - ENVIRONMENT VARIABLES
-      - If DISABLE_GIT_PRECOMMIT_RUN_TESTS is defined then tests will not be run
-      - If DISABLE_GIT_PRECOMMIT_RUN_LINT is defined then lint will not be run
-*/
+ global git hooks setup
+ - git config --global init.templatedir '~/.git-templates'
+ - mkdir -p ~/.git-templates/hooks
+ - create ~/.git-templates/hooks/pre-commit file and populate it with pre-commit-node bash file
+ - make file executable
+ chmod a+x ~/.git-templates/hooks/pre-commit
+ - copy this file to ~/.git-templates/hooks/pre-commit-node.js
+ - reinitialise each relevant git hub repo that should use the pre-commit hook
+ git init
+ the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder
+ - ENVIRONMENT VARIABLES
+ - If DISABLE_GIT_PRECOMMIT_RUN_TESTS is defined then tests will not be run
+ - If DISABLE_GIT_PRECOMMIT_RUN_LINT is defined then lint will not be run
+ */
 
 // need the git add  on meta and package, test env variables
 
 const fs = require('fs'),
   exec = require('child_process').exec;
 
-const metaDataPath = './deploy/metadata.json',
-  packageJsonPath = './package.json';
-
 var version;
 var pckage;
+var currentWorkingDirectory = __dirname;
+
+if (currentWorkingDirectory.endsWith('/.git/hooks')) {
+  currentWorkingDirectory = currentWorkingDirectory.substr(0, currentWorkingDirectory.indexOf('/.git/hooks'));
+}
+
+const metaDataPath = currentWorkingDirectory + '/deploy/metadata.json',
+  packageJsonPath = currentWorkingDirectory + '/package.json';
 
 logMessage('starting');
 
@@ -59,23 +64,26 @@ runTests()
 
 function runTests() {
   return new Promise(function(resolve, reject) {
-      if (process.env.DISABLE_GIT_PRECOMMIT_RUN_TESTS) {
-        return resolve();
-      }
+    if (process.env.DISABLE_GIT_PRECOMMIT_RUN_TESTS) {
+      return resolve();
+    }
 
-      if (pckage.scripts !== undefined && pckage.scripts.test) {
+    if (pckage.scripts !== undefined && pckage.scripts.test) {
 
-        logMessage('running tests');
+      logMessage('running tests');
 
-        exec(pckage.scripts.test, function(error, stdout, stderr) {
-          if (error) {
-            logMessage('an error occurred while running tests: ' + error);
-            return reject();
-          }
+      exec('npm run test', function(error, stdout, stderr) {
+        if (error) {
+          console.log(stderr);
+          logMessage('an error occurred while running tests: ' + error);
+          logMessage('RUN "npm test" AND FIX THE ISSUES!');
+          return reject();
+        }
 
-          resolve();
-        });
-      }
+        console.log(stdout);
+        resolve();
+      });
+    }
   });
 }
 
@@ -88,12 +96,15 @@ function runLint() {
     if (pckage.scripts !== undefined && pckage.scripts.lint) {
       logMessage('running lint');
 
-      exec(pckage.scripts.lint, function(error, stdout, stderr) {
+      exec('npm run lint', function(error, stdout, stderr) {
         if (error) {
+          console.log(stderr);
           logMessage('an error occurred while running lint: ' + error);
+          logMessage('RUN "npm run lint" AND FIX THE ISSUES!');
           return reject();
         }
 
+        console.log(stdout);
         resolve();
       });
     }
@@ -134,24 +145,24 @@ function updateMetaData() {
 function updatePackageJson() {
   return new Promise(function(resolve, reject) {
 
-      try {
-        pckage.version = version || getNewVersion(pckage.version);
-        fs.writeFileSync(packageJsonPath, JSON.stringify(pckage, null, 2));
-        logMessage('updated package.json version number to: ' + pckage.version);
+    try {
+      pckage.version = version || getNewVersion(pckage.version);
+      fs.writeFileSync(packageJsonPath, JSON.stringify(pckage, null, 2));
+      logMessage('updated package.json version number to: ' + pckage.version);
 
-        exec('git add ' + packageJsonPath, function(error, stdout, stderr) {
-          if (error) {
-            logMessage('an error occurred while trying to git add ' + packageJsonPath + ': ' + error);
-            return reject();
-          }
+      exec('git add ' + packageJsonPath, function(error, stdout, stderr) {
+        if (error) {
+          logMessage('an error occurred while trying to git add ' + packageJsonPath + ': ' + error);
+          return reject();
+        }
 
-          resolve();
-        });
-      }
-      catch (err) {
-        logMessage('Something went wrong while updating package.json version');
-        reject();
-      }
+        resolve();
+      });
+    }
+    catch (err) {
+      logMessage('Something went wrong while updating package.json version');
+      reject();
+    }
   });
 }
 

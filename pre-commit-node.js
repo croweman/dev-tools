@@ -64,7 +64,7 @@ runTests()
 
 function runTests() {
   return new Promise(function(resolve, reject) {
-    if (process.env.DISABLE_GIT_PRECOMMIT_RUN_TESTS) {
+    if (process.env.DISABLE_GIT_PRECOMMIT_RUN_TESTS === 'true') {
       return resolve();
     }
 
@@ -76,7 +76,7 @@ function runTests() {
         if (error) {
           console.log(stderr);
           logMessage('an error occurred while running tests: ' + error);
-          logMessage('running tests can be disabled by setting the environment variable "DISABLE_GIT_PRECOMMIT_RUN_TESTS=false"')
+          logMessage('running tests can be disabled by setting the environment variable "DISABLE_GIT_PRECOMMIT_RUN_TESTS=true"')
           logMessage('RUN "npm test" AND FIX THE ISSUES!');
           return reject();
         }
@@ -85,12 +85,15 @@ function runTests() {
         resolve();
       });
     }
+    else {
+      resolve();
+    }
   });
 }
 
 function runLint() {
   return new Promise(function(resolve, reject) {
-    if (process.env.DISABLE_GIT_PRECOMMIT_RUN_LINT) {
+    if (process.env.DISABLE_GIT_PRECOMMIT_RUN_LINT === 'true') {
       return resolve();
     }
 
@@ -109,6 +112,9 @@ function runLint() {
         console.log(stdout);
         resolve();
       });
+    }
+    else {
+      resolve();
     }
   });
 }

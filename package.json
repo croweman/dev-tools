@@ -1,0 +1,12 @@
+{
+  "name": "testing",
+  "version": "0.1.11",
+  "private": true,
+  "scripts": {
+    "start": "node ./index.js",
+    "test": "exit 0",
+    "lint": "exit 0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

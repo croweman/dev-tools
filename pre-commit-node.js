@@ -9,7 +9,8 @@ global git hooks setup
   - mkdir -p ~/.git-templates/hooks
   - create ~/.git-templates/hooks/pre-commit file and populate it with pre-commit-node bash file
     - make file executable
-        chmod a+x ~/.git-templates/hooks/pre-commit-node
+        chmod a+x ~/.git-templates/hooks/pre-commit
+    - copy this file to ~/.git-templates/hooks/pre-commit-node.js
     - reinitialise each relevant git hub repo that should use the pre-commit hook
         git init
         the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder

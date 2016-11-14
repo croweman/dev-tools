@@ -76,6 +76,7 @@ function runTests() {
         if (error) {
           console.log(stderr);
           logMessage('an error occurred while running tests: ' + error);
+          logMessage('running tests can be disabled by setting the environment variable "DISABLE_GIT_PRECOMMIT_RUN_TESTS=false"')
           logMessage('RUN "npm test" AND FIX THE ISSUES!');
           return reject();
         }
@@ -100,6 +101,7 @@ function runLint() {
         if (error) {
           console.log(stderr);
           logMessage('an error occurred while running lint: ' + error);
+          logMessage('running tests can be disabled by setting the environment variable "DISABLE_GIT_PRECOMMIT_RUN_LINT=false"')
           logMessage('RUN "npm run lint" AND FIX THE ISSUES!');
           return reject();
         }

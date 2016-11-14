@@ -19,8 +19,6 @@
  - If DISABLE_GIT_PRECOMMIT_RUN_LINT is defined then lint will not be run
  */
 
-// need the git add  on meta and package, test env variables
-
 const fs = require('fs'),
   exec = require('child_process').exec;
 
@@ -32,8 +30,10 @@ if (currentWorkingDirectory.endsWith('/.git/hooks')) {
   currentWorkingDirectory = currentWorkingDirectory.substr(0, currentWorkingDirectory.indexOf('/.git/hooks'));
 }
 
-const metaDataPath = currentWorkingDirectory + '/deploy/metadata.json',
-  packageJsonPath = currentWorkingDirectory + '/package.json';
+const metaDataRelativePath = '/deploy/metadata.json',
+  packageJsonRelativePath = '/package.json',
+  metaDataPath = currentWorkingDirectory + metaDataRelativePath,
+  packageJsonPath = currentWorkingDirectory + packageJsonRelativePath;
 
 logMessage('starting');
 
@@ -130,7 +130,7 @@ function updateMetaData() {
         logMessage('updated meta data version number to: ' + metaData.version);
         version = metaData.version;
 
-        exec('git add ' + metaDataPath, function(error, stdout, stderr) {
+        exec('git add .' + metaDataRelativePath, function(error, stdout, stderr) {
           if (error) {
             logMessage('an error occurred while trying to git add ' + metaDataPath + ': ' + error);
             return reject();
@@ -158,7 +158,7 @@ function updatePackageJson() {
       fs.writeFileSync(packageJsonPath, JSON.stringify(pckage, null, 2));
       logMessage('updated package.json version number to: ' + pckage.version);
 
-      exec('git add ' + packageJsonPath, function(error, stdout, stderr) {
+      exec('git add .' + packageJsonRelativePath, function(error, stdout, stderr) {
         if (error) {
           logMessage('an error occurred while trying to git add ' + packageJsonPath + ': ' + error);
           return reject();

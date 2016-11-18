@@ -1,6 +1,6 @@
 {
   "name": "testing",
-  "version": "0.1.18",
+  "version": "0.1.26",
   "private": true,
   "scripts": {
     "start": "node ./index.js",

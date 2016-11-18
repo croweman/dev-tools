@@ -1,0 +1,2 @@
+precommit - that enforces format on messages,
+could force read?, validate first then ask for story number?

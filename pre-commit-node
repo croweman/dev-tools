@@ -1,8 +1,0 @@
-#!/bin/bash
-
-set -e
-
-echo $PWD
-DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-JSFILEPATH="$DIR/pre-commit-node.js"
-node ${JSFILEPATH}

@@ -1,50 +1,393 @@
-#!/bin/bash
+#!/usr/local/bin/node
 
-set -e
+'use strict';
 
-####################################################
-# SETUP START
-#
-# bash script is useless without pre-commit versions
-#
-# jq is a dependency which will need to be installed
-#   https://stedolan.github.io/jq/  osx
-#   - copy file to /usr/local/bin
-#   - make file executable
-#     chmod +x jq
-#
-# global git hooks setup
-#  - git config --global init.templatedir '~/.git-templates'
-#  - mkdir -p ~/.git-templates/hooks
-#  - create ~/.git-templates/hooks/pre-push file and populate it with this script
-#  - make file executable
-#      chmod a+x ~/.git-templates/hooks/pre-push
-#  - reinitialise each relevant git hub repo that should use the pre-commit hook
-#      git init
-#      the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder
-#
-# SETUP END
-####################################################
+/*
+ SETUP
+ -----
 
-if [ ! -f ./deploy/metadata.json ]; then
-    exit
-fi
+ global git hooks setup
+ - git config --global init.templatedir '~/.git-templates'
+ - mkdir -p ~/.git-templates/hooks
+ - create ~/.git-templates/hooks/pre-push file and populate it with pre-push bash file
+ - make file executable
+     chmod a+x ~/.git-templates/hooks/pre-push
+ - copy this file to ~/.git-templates/hooks/pre-push-node.js
+ - reinitialise each relevant git hub repo that should use the pre-commit hook
+     - git init
+     - the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder,
+       but it will not overwrite files that already exist.
+ - ENVIRONMENT VARIABLES
+    - If DISABLE_GIT_PREPUSH_RUN_TESTS is defined then tests will not be run
+    - If DISABLE_GIT_PREPUSH_RUN_LINT is defined then lint will not be run
+ */
 
-if [ ! -f ~/deployment-metadata.json ]; then
-    exit
-fi
+const fs = require('fs'),
+  exec = require('child_process').exec;
 
-product=($(jq -r '.product' ./deploy/metadata.json))
-service=($(jq -r '.service' ./deploy/metadata.json))
-productAndService=${product}_${service}
+var version;
+var pckage;
+var currentWorkingDirectory = __dirname;
+var remoteOriginUrl;
+var remoteMetaDataVersion;
+var remotePackageJsonVersion;
+var metaDataVersion;
+var packageJsonVersion;
 
-if [ "$product" ] && [ "$service" ]; then
+if (currentWorkingDirectory.endsWith('/.git/hooks')) {
+  currentWorkingDirectory = currentWorkingDirectory.substr(0, currentWorkingDirectory.indexOf('/.git/hooks'));
+}
 
-    existence=($(jq -r '.'${productAndService}'' ~/deployment-metadata.json))
+const metaDataRelativePath = 'deploy/metadata.json',
+  packageJsonRelativePath = 'package.json',
+  metaDataPath = currentWorkingDirectory + '/' + metaDataRelativePath,
+  packageJsonPath = currentWorkingDirectory + '/' + packageJsonRelativePath;
 
-    if [ $existence = "1" ]; then
+logMessage('starting');
 
-        jq "del(.$productAndService)" ~/deployment-metadata.json > tmp.$$.json && mv tmp.$$.json ~/deployment-metadata.json
-    fi
+if (!fs.existsSync(packageJsonPath)) {
+  logMessage('completed');
+  return;
+}
 
-fi
+pckage = loadPackageJson();
+
+if (!pckage) {
+  logMessage('completed');
+  return;
+}
+
+function getRemoteVersions() {
+  var path = __dirname + '/zxyyxz/' + metaDataRelativePath;
+  if (fs.existsSync(path)) {
+    try {
+      var metaData = require(path);
+      remoteMetaDataVersion = metaData.version;
+
+      if (remoteMetaDataVersion) {
+        remoteMetaDataVersion = remoteMetaDataVersion.trim();
+      }
+    }
+    catch (err) {
+      logMessage('an error occurred while loading remote /' + metaDataRelativePath);
+    }
+  }
+
+  path = __dirname + '/zxyyxz/' + packageJsonRelativePath;
+
+  if (fs.existsSync(path)) {
+    try {
+      var pack = require(path);
+      remotePackageJsonVersion = pack.version;
+
+      if (remotePackageJsonVersion) {
+        remotePackageJsonVersion = remotePackageJsonVersion.trim();
+      }
+    }
+    catch (err) {
+      logMessage('an error occurred while loading remote ' + packageJsonRelativePath);
+    }
+  }
+
+  if (remoteMetaDataVersion) {
+    logMessage(remoteMetaDataVersion + ': remote ' + metaDataRelativePath + ' version')
+  }
+
+  if (remotePackageJsonVersion) {
+    logMessage(remotePackageJsonVersion + ': remote ' + packageJsonRelativePath + ' version')
+  }
+}
+
+function getGitRemoteUrl() {
+  return new Promise(function (resolve, reject) {
+
+    logMessage('retrieving versions from remote origin');
+
+    exec('git config --get remote.origin.url', function(error, stdout, stderr) {
+      if (error) {
+        logMessage('an error occurred while trying to determine the remote.origin.url: ' + error +(stderr || ''));
+        return reject(error);
+      }
+
+      var url = stdout.trim();
+
+      if (url === '') {
+        logMessage('The git remote.origin.url could not be determined for the repository');
+        return reject();
+      }
+      else {
+        remoteOriginUrl = url;
+        resolve();
+      }
+    });
+  });
+}
+
+function cloneGitRepository() {
+  return new Promise(function(resolve, reject) {
+
+    if (fs.existsSync(__dirname + '/zxyyxz')) {
+
+      exec('git pull', {CWD: __dirname + '/zxyyxz'},  function(error, stdout, stderr) {
+        if (error) {
+          logMessage('an error occurred while trying to pull a new version of the git repository ' + remoteOriginUrl + ': ' + error + (stderr || ''));
+          return reject(error);
+        }
+        getRemoteVersions();
+        resolve();
+      });
+    }
+    else {
+      exec('git clone ' + remoteOriginUrl + ' zxyyxz', function(error, stdout, stderr) {
+        if (error) {
+          logMessage('an error occurred while trying to create a temporary clone of the git repository ' + remoteOriginUrl + ': ' + error + (stderr || ''));
+          return reject(error);
+        }
+
+        getRemoteVersions();
+        resolve();
+      });
+    }
+
+  });
+}
+
+function checkVersions() {
+  return new Promise(function(resolve, reject) {
+
+    var shouldReject = false;
+    var versionRegex = /^(\d+\.)(\d+\.)(\d+)$/;
+
+    // output versions and validate
+    if (remoteMetaDataVersion) {
+
+      if (fs.existsSync(metaDataPath)) {
+        try {
+          var metaData = require(metaDataPath);
+          metaDataVersion = metaData.version;
+          logMessage(metaDataVersion + ': ' + metaDataRelativePath + ' version');
+
+          if (!versionRegex.test(metaDataVersion)) {
+            logMessage('Error: ' + metaDataRelativePath + ' version is not valid');
+            shouldReject = true;
+          }
+        }
+        catch (err) {
+          logMessage('an error occurred while loading ' + metaDataRelativePath);
+          return reject(err);
+        }
+      }
+
+    }
+
+    if (remotePackageJsonVersion) {
+
+      if (fs.existsSync(packageJsonPath)) {
+        try {
+          var pack = require(packageJsonPath);
+          packageJsonVersion = pack.version;
+          logMessage(packageJsonVersion + ': ' + packageJsonRelativePath + ' version');
+
+          if (!versionRegex.test(packageJsonVersion)) {
+            logMessage('Error: ' + packageJsonRelativePath + ' version is not valid');
+            shouldReject = true;
+          }
+        }
+        catch (err) {
+          logMessage('an error occurred while loading ' + packageJsonRelativePath);
+          return reject(err);
+        }
+      }
+    }
+
+    if (!metaDataVersion) {
+      logMessage('Error: ' + metaDataRelativePath + ' version is not valid');
+      shouldReject = true;
+    }
+
+    if (!packageJsonVersion) {
+      logMessage('Error: ' + metaDataRelativePath + ' version is not valid');
+      shouldReject = true;
+    }
+
+    if (remoteMetaDataVersion && versionRegex.test(remoteMetaDataVersion)) {
+      if (!isVersionGreater(metaDataVersion, remoteMetaDataVersion)) {
+        logMessage('Error: ' + metaDataRelativePath + ' version is less than or equal to remote ' + metaDataRelativePath + ' version');
+        shouldReject = true;
+      }
+    }
+
+    if (remotePackageJsonVersion && versionRegex.test(remotePackageJsonVersion)) {
+      if (!isVersionGreater(packageJsonVersion, remotePackageJsonVersion)) {
+        logMessage('Error: ' +packageJsonRelativePath  + ' version is less than or equal to remote ' + packageJsonRelativePath + ' version');
+        shouldReject = true;
+      }
+    }
+
+    if (metaDataVersion !== packageJsonVersion) {
+      logMessage('ERROR: ' + packageJsonRelativePath + ' and ' + metaDataRelativePath + ' versions should be the same');
+      shouldReject = true;
+    }
+
+    if (shouldReject) {
+      prompt('Do you want to continue? (y/n)')
+        .then(resolve)
+        .catch(function() { reject('You decided not to continue because of invalid version configuration') });
+    }
+    else {
+      return resolve();
+    }
+  });
+}
+
+function isVersionGreater(localVersion, remoteVersion) {
+  var local = localVersion || '';
+  var remote = remoteVersion || '';
+
+  var localParts = local.split('.');
+  var remoteParts = remote.split('.');
+  var maxParts = Math.max(localParts.length, remoteParts.length);
+
+  while (localParts.length < maxParts) {
+    localParts.push('0');
+  }
+
+  while (remoteParts.length < maxParts) {
+    remoteParts.push('0');
+  }
+
+  localParts = localParts.map(function(part) { return parseInt(part); });
+  remoteParts = remoteParts.map(function(part) { return parseInt(part); });
+
+  for (var i = 0; i < maxParts; i++) {
+    if (localParts[i] > remoteParts[i]) {
+      return true;
+    }
+
+    if (localParts[i] < remoteParts[i]) {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+getGitRemoteUrl()
+  .then(cloneGitRepository)
+  .then(checkVersions)
+  .then(runTests)
+  .then(runLint)
+  .then(function() {
+    logMessage('completed');
+    process.exit(0);
+  })
+  .catch(function(err) {
+    logMessage('Something went wrong: ' + err);
+    process.exit(1);
+  });
+
+function runTests() {
+  return new Promise(function(resolve, reject) {
+    if (process.env.DISABLE_GIT_PREPUSH_RUN_TESTS === 'true') {
+      return resolve();
+    }
+
+    if (pckage.scripts !== undefined && pckage.scripts.test) {
+
+      logMessage('running tests');
+
+      exec('npm run test', function(error, stdout, stderr) {
+        if (error) {
+          console.log(stderr);
+          logMessage('an error occurred while running tests: ' + error);
+          logMessage('running tests can be disabled by setting the environment variable "DISABLE_GIT_PREPUSH_RUN_TESTS=true"')
+          logMessage('RUN "npm test" AND FIX THE ISSUES!');
+
+          prompt('Do you want to continue? (y/n)')
+            .then(resolve)
+            .catch(function() { reject('You decided not to continue because tests failed') });
+        }
+        else {
+          console.log(stdout);
+          resolve();
+        }
+      });
+    }
+    else {
+      resolve();
+    }
+  });
+}
+
+function runLint() {
+  return new Promise(function(resolve, reject) {
+    if (process.env.DISABLE_GIT_PREPUSH_RUN_LINT === 'true') {
+      return resolve();
+    }
+
+    if (pckage.scripts !== undefined && pckage.scripts.lint) {
+      logMessage('running lint');
+
+      exec('npm run lint', function(error, stdout, stderr) {
+        if (error) {
+          console.log(stderr);
+          logMessage('an error occurred while running lint: ' + error);
+          logMessage('running tests can be disabled by setting the environment variable "DISABLE_GIT_PREPUSH_RUN_LINT=false"')
+          logMessage('RUN "npm run lint" AND FIX THE ISSUES!');
+
+          prompt('Do you want to continue? (y/n)')
+            .then(resolve)
+            .catch(function() { reject('You decided not to continue because lint failed') });
+        }
+        else {
+          console.log(stdout);
+          resolve();
+        }
+      });
+    }
+    else {
+      resolve();
+    }
+  });
+}
+
+function loadPackageJson() {
+  try {
+    return require(packageJsonPath);
+  }
+  catch (err) {
+    logMessage('package json could not be loaded' + err)
+    return undefined;
+  }
+}
+
+function prompt(question) {
+
+  return new Promise(function(resolve, reject) {
+      try {
+        var stdin = process.stdin
+        var stdout = process.stdout;
+
+        stdin.resume();
+        stdout.write(question);
+
+        stdin.once('data', function (data) {
+          console.log();
+          if (data.toString().toLowerCase().trim() === 'y') {
+            return resolve();
+          }
+          else {
+            return reject();
+          }
+        });
+      }
+      catch (err) {
+        console.log(err);
+      }
+    }
+  );
+}
+
+function logMessage(message) {
+  console.log('** pre-push: ' + message + ' **');
+}

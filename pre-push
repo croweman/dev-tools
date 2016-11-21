@@ -9,10 +9,9 @@
  global git hooks setup
  - git config --global init.templatedir '~/.git-templates'
  - mkdir -p ~/.git-templates/hooks
- - create ~/.git-templates/hooks/pre-push file and populate it with pre-push bash file
+ - create ~/.git-templates/hooks/pre-push file and populate it with pre-push file contents
  - make file executable
      chmod a+x ~/.git-templates/hooks/pre-push
- - copy this file to ~/.git-templates/hooks/pre-push-node.js
  - reinitialise each relevant git hub repo that should use the pre-commit hook
      - git init
      - the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder,

@@ -1,0 +1,84 @@
+#!/usr/local/bin/node
+
+'use strict';
+
+/*
+ SETUP
+ -----
+
+ global git hooks setup
+ - git config --global init.templatedir '~/.git-templates'
+ - mkdir -p ~/.git-templates/hooks
+ - create ~/.git-templates/hooks/commit-msg file and populate it with commit-msg file contents
+ - make file executable
+     chmod a+x ~/.git-templates/hooks/commit-msg
+ - reinitialise each relevant git hub repo that should use the pre-commit hook
+     - git init
+     - the git-init.sh bash script can be executed in a parent directory to reinitialise all child folders that have a .git folder,
+       but it will not overwrite files that already exist.
+ */
+
+const fs = require('fs'),
+  exec = require('child_process').exec;
+
+logMessage('starting');
+
+var commitMessage = process.argv[2];
+
+if (!commitMessage) {
+    logMessage('No commit message argument was provided');
+    exit(1);
+}
+
+console.log(commitMessage);
+
+if (!/(\[[a-zA-Z]+-[0-9]+\][ ]{1}\-[ ]{1}|merge)/.test(commitMessage)) {
+    logMessage('The commit message is not in a correct format it should look like "[PF-123] - Added functionality to take over the world."');
+
+    prompt('Do you want to continue? (y/n)')
+            .then(function() {
+                logMessage('complete');
+                process.exit(0);
+            })
+            .catch(function() {
+                logMessage('You decided not to continue because of invalid commit message');
+                logMessage('complete');
+                process.exit(1);
+            });
+}
+else {
+    logMessage('Commit message is valid.');
+    logMessage('complete');
+    process.exit(0);
+}
+
+function prompt(question) {
+
+  return new Promise(function(resolve, reject) {
+      try {
+        var stdin = process.stdin
+        var stdout = process.stdout;
+
+        stdin.resume();
+        stdout.write(question);
+
+        stdin.once('data', function (data) {
+          console.log();
+          if (data.toString().toLowerCase().trim() === 'y') {
+            return resolve();
+          }
+          else {
+            return reject();
+          }
+        });
+      }
+      catch (err) {
+        console.log(err);
+      }
+    }
+  );
+}
+
+function logMessage(message) {
+  console.log('** commit-msg: ' + message + ' **');
+}
